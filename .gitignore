@@ -1,0 +1,28 @@
+# .NET / MSBuild
+bin/
+obj/
+*.user
+
+# Android generated
+local.properties
+google-services.json
+
+# IDE
+.vs/
+
+# Python tooling (venvs and cache)
+.venv/
+.venv312/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Model artefacts — too large for git; rebuild locally with the Python scripts
+models/
+*.onnx
+*.onnx.data
+*.pt
+*.bin
+*.safetensors
+*.ctranslate2/

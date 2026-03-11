@@ -1,0 +1,49 @@
+<resources>
+    <string name="app_name">Wetin Happen Dem Internets</string>
+    <string name="app_tagline">Read any article in Nigerian Pidgin.</string>
+    <string name="feed_label">Google News feed (RSS)</string>
+    <string name="feed_url_hint">https://news.google.com/rss?hl=en-NG&amp;gl=NG&amp;ceid=NG:en</string>
+    <string name="refresh_feed_button">Refresh</string>
+    <string name="feed_empty">No article found in feed.</string>
+    <string name="feed_status_refreshing">Refreshing feed…</string>
+    <string name="feed_status_loaded">Feed refreshed. Pick an article.</string>
+    <string name="error_feed_fetch_failed">Could not refresh Google News feed.</string>
+
+    <string name="url_hint">https://news-site.com/full-article-link</string>
+    <string name="fetch_button">Fetch + Translate</string>
+    <string name="save_button">Save</string>
+    <string name="share_button">Share</string>
+    <string name="side_by_side_toggle">Side-by-side EN | PCM</string>
+    <string name="saved_stories_label">Saved stories</string>
+    <string name="load_button">Load</string>
+    <string name="placeholder_title">No story loaded yet</string>
+    <string name="placeholder_citation">Source citation go show here</string>
+    <string name="citation_template">Source: %1$s • %2$s</string>
+    <string name="share_chooser_title">Share translated story</string>
+    <string name="saved_list_empty">No saved story yet</string>
+
+    <string name="upload_docs_button">Export</string>
+    <string name="upload_docs_chooser">Export story to…</string>
+    <string name="upload_docs_nothing">No translated story to export yet.</string>
+
+    <string name="status_ready">Ready.</string>
+    <string name="status_fetching">Fetching and translating…</string>
+    <string name="status_done">Done. Translation complete.</string>
+    <string name="status_saved">Story saved.</string>
+    <string name="status_loaded_saved">Loaded saved story.</string>
+    <string name="status_loaded_cached">Loaded cached translation.</string>
+
+    <string name="error_invalid_url">Enter a valid article URL.</string>
+    <string name="error_fetch_failed">Could not fetch or translate this story.</string>
+    <string name="error_article_parse">Could not extract article text from this page.</string>
+    <string name="error_nothing_to_save">No translated story to save yet.</string>
+    <string name="error_nothing_to_share">No translated story to share yet.</string>
+    <string name="error_no_saved_story">No saved story to load.</string>
+
+    <string name="diagnostic_timeout">Request timed out before article loaded.</string>
+    <string name="diagnostic_network">Network error — check connection and try again.</string>
+    <string name="diagnostic_parse">Page loaded but readable content was not detected.</string>
+    <string name="diagnostic_feed">Feed failed or returned an unreadable response.</string>
+    <string name="diagnostic_cached_used">Network failed — loaded cached translation.</string>
+    <string name="diagnostic_none">All good.</string>
+</resources>

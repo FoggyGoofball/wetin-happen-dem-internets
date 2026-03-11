@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="wetin happen dem internets.csproj">
+    <Deploy />
+  </Project>
+</Solution>
