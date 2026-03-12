@@ -94,7 +94,7 @@ namespace wetin_happen_dem_internets
 
             _fetchButton!.Click += async (_, _) => await FetchAndTranslateAsync();
             _saveButton!.Click  += (_, _) => SaveCurrentStory();
-            _shareButton!.Click += (_, _) => ShareCurrentStory();
+            _shareButton!.Click += async (_, _) => await ShareCurrentStoryAsync();
             _uploadDocsButton!.Click += async (_, _) => await SaveToGithubDbAsync();
             _uploadDocsButton!.LongClick += (_, _) => ShowDbSettingsDialog();
             _sideBySideSwitch!.CheckedChange += (_, _) => RenderStory();
@@ -493,7 +493,7 @@ namespace wetin_happen_dem_internets
             SetIdleState(GetString(Resource.String.status_loaded_saved));
         }
 
-        private void ShareCurrentStory()
+        private async Task ShareCurrentStoryAsync()
         {
             if (_currentStory is null)
             {
@@ -501,22 +501,71 @@ namespace wetin_happen_dem_internets
                 return;
             }
 
-            var sb = new StringBuilder();
-            sb.AppendLine(_currentStory.Title);
-            sb.AppendLine(string.Format(GetString(Resource.String.citation_template), _currentStory.SourceDomain, _currentStory.SourceUrl));
-            sb.AppendLine();
+            var settings = GetDbSettings();
+            var index = await LoadPublicIndexAsync(settings);
+            var existing = index.FirstOrDefault(i => string.Equals(i.SourceUrl, _currentStory.SourceUrl, StringComparison.OrdinalIgnoreCase));
 
-            foreach (var p in _currentStory.Paragraphs)
+            if (existing is null)
             {
-                sb.AppendLine(p.Pidgin);
-                sb.AppendLine();
+                var shouldSubmit = await PromptSubmitBeforeShareAsync();
+                if (!shouldSubmit)
+                {
+                    return;
+                }
+
+                await SaveToGithubDbAsync();
+                index = await LoadPublicIndexAsync(settings);
+                existing = index.FirstOrDefault(i => string.Equals(i.SourceUrl, _currentStory.SourceUrl, StringComparison.OrdinalIgnoreCase));
+
+                if (existing is null)
+                {
+                    Toast.MakeText(this, Resource.String.github_db_save_failed, ToastLength.Long)?.Show();
+                    return;
+                }
             }
 
+            var spaLink = $"{settings.SpaBaseUrl.TrimEnd('/')}/?id={Uri.EscapeDataString(existing.Id)}";
             var sendIntent = new Intent(Intent.ActionSend);
             sendIntent.SetType("text/plain");
-            sendIntent.PutExtra(Intent.ExtraText, sb.ToString().TrimEnd());
-
+            sendIntent.PutExtra(Intent.ExtraTitle, _currentStory.Title);
+            sendIntent.PutExtra(Intent.ExtraText, spaLink);
             StartActivity(Intent.CreateChooser(sendIntent, GetString(Resource.String.share_chooser_title)));
+        }
+
+        private Task<bool> PromptSubmitBeforeShareAsync()
+        {
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            new AlertDialog.Builder(this)
+                .SetTitle(GetString(Resource.String.share_submit_required_title))
+                .SetMessage(GetString(Resource.String.share_submit_required_message))
+                .SetNegativeButton(GetString(Android.Resource.String.Cancel), (_, _) => tcs.TrySetResult(false))
+                .SetPositiveButton(GetString(Resource.String.upload_docs_button), (_, _) => tcs.TrySetResult(true))
+                .SetOnCancelListener(new DialogCancelListener(() => tcs.TrySetResult(false)))
+                .Show();
+
+            return tcs.Task;
+        }
+
+        private async Task<List<IndexItem>> LoadPublicIndexAsync(DbSettings settings)
+        {
+            try
+            {
+                var url = $"https://raw.githubusercontent.com/{settings.Owner}/{settings.Repo}/{settings.Branch}/data/index.json?{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+                var json = await new HttpClient().GetStringAsync(url);
+                return JsonSerializer.Deserialize<List<IndexItem>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+            }
+            catch
+            {
+                return [];
+            }
+        }
+
+        private sealed class DialogCancelListener : Java.Lang.Object, IDialogInterfaceOnCancelListener
+        {
+            private readonly Action _onCancel;
+            public DialogCancelListener(Action onCancel) => _onCancel = onCancel;
+            public void OnCancel(IDialogInterface? dialog) => _onCancel();
         }
 
         private async Task RefreshFeedArticlesAsync()

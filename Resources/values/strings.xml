@@ -25,6 +25,8 @@
     <string name="placeholder_citation">Source citation go show here</string>
     <string name="citation_template">Source: %1$s • %2$s</string>
     <string name="share_chooser_title">Share translated story</string>
+    <string name="share_submit_required_title">Share needs DB link</string>
+    <string name="share_submit_required_message">This article is not in DB yet. Submit it first, then share the SPA link?</string>
     <string name="saved_list_empty">No saved story yet</string>
 
     <string name="upload_docs_button">Save to DB</string>
