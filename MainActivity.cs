@@ -890,9 +890,10 @@ namespace wetin_happen_dem_internets
 
             try
             {
-                await EnsureGitHubWritableAsync(settings);
+                //await EnsureGitHubWritableAsync(settings);
 
                 var now = DateTimeOffset.UtcNow;
+
                 var tags = ParseTags(_tagsInput?.Text);
 
                 var (indexItems, indexSha) = await LoadIndexAsync(settings);
