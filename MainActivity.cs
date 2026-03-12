@@ -890,6 +890,8 @@ namespace wetin_happen_dem_internets
 
             try
             {
+                await EnsureGitHubWritableAsync(settings);
+
                 var now = DateTimeOffset.UtcNow;
                 var tags = ParseTags(_tagsInput?.Text);
 
@@ -948,7 +950,7 @@ namespace wetin_happen_dem_internets
                 }
 
                 SetIdleState(isUpdate ? GetString(Resource.String.github_db_updated) : GetString(Resource.String.github_db_saved));
-                UpdateDiagnostic(spaLink, false);
+                UpdateDiagnostic($"{spaLink}\nSaved in: {settings.Owner}/{settings.Repo}/{articlePath}", false);
                 Toast.MakeText(this, isUpdate ? Resource.String.github_db_updated : Resource.String.github_db_saved, ToastLength.Long)?.Show();
             }
             catch (Exception ex)
@@ -963,15 +965,53 @@ namespace wetin_happen_dem_internets
             }
         }
 
+        private async Task EnsureGitHubWritableAsync(DbSettings settings)
+        {
+            using var client = BuildGitHubClient(settings.Token);
+
+            // 1) Rate limit check
+            var rateJson = await client.GetStringAsync("https://api.github.com/rate_limit");
+            using (var rateDoc = JsonDocument.Parse(rateJson))
+            {
+                var core = rateDoc.RootElement.GetProperty("resources").GetProperty("core");
+                var remaining = core.GetProperty("remaining").GetInt32();
+                if (remaining <= 0)
+                {
+                    throw new InvalidOperationException("GitHub API rate limit exhausted. Try again later.");
+                }
+            }
+
+            // 2) Repo write permission check
+            var repoJson = await client.GetStringAsync($"https://api.github.com/repos/{settings.Owner}/{settings.Repo}");
+            using var repoDoc = JsonDocument.Parse(repoJson);
+            if (repoDoc.RootElement.TryGetProperty("permissions", out var perms))
+            {
+                var canPush = perms.TryGetProperty("push", out var pushEl) && pushEl.ValueKind == JsonValueKind.True;
+                if (!canPush)
+                {
+                    throw new InvalidOperationException("Token cannot write to this repository (push permission missing).");
+                }
+            }
+        }
+
         private DbSettings GetDbSettings()
         {
             var prefs = GetSharedPreferences(DbSettingsPref, FileCreationMode.Private);
-            return new DbSettings(
+            var settings = new DbSettings(
                 Owner: prefs?.GetString(DbOwnerKey, DefaultDbOwner) ?? DefaultDbOwner,
                 Repo: prefs?.GetString(DbRepoKey, DefaultDbRepo) ?? DefaultDbRepo,
                 Branch: prefs?.GetString(DbBranchKey, DefaultDbBranch) ?? DefaultDbBranch,
                 Token: prefs?.GetString(DbTokenKey, string.Empty) ?? string.Empty,
                 SpaBaseUrl: prefs?.GetString(DbSpaBaseUrlKey, DefaultSpaBaseUrl) ?? DefaultSpaBaseUrl);
+
+            // Backward-compat migration: older builds defaulted to app repo, not DB repo.
+            if (string.Equals(settings.Repo, "wetin-happen-dem-internets", StringComparison.OrdinalIgnoreCase))
+            {
+                settings = settings with { Repo = DefaultDbRepo, Branch = DefaultDbBranch, SpaBaseUrl = DefaultSpaBaseUrl };
+                SaveDbSettings(settings);
+            }
+
+            return settings;
         }
 
         private void SaveDbSettings(DbSettings settings)
@@ -1049,8 +1089,9 @@ namespace wetin_happen_dem_internets
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
                 return (list, sha);
             }
-            catch
+            catch (HttpRequestException ex) when (ex.Message.Contains("404", StringComparison.OrdinalIgnoreCase))
             {
+                // index.json not created yet - first write flow.
                 return ([], null);
             }
         }
