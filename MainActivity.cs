@@ -19,6 +19,7 @@ namespace wetin_happen_dem_internets
     public class MainActivity : Activity
     {
         private EditText? _urlInput;
+        private EditText? _tagsInput;
         private Button? _fetchButton;
         private Button? _saveButton;
         private Button? _shareButton;
@@ -36,14 +37,32 @@ namespace wetin_happen_dem_internets
         private EditText? _feedUrlInput;
         private Button? _refreshFeedButton;
         private ListView? _articlesListView;
+        private EditText? _dbSearchInput;
+        private Button? _loadDbButton;
+        private ListView? _dbArticlesListView;
 
         private readonly List<StoryRecord> _savedStories = [];
         private readonly Dictionary<string, StoryRecord> _sessionStoryCache = new(StringComparer.OrdinalIgnoreCase);
         private StoryRecord? _currentStory;
         private readonly List<FeedArticle> _feedArticles = [];
+        private readonly List<IndexItem> _dbIndexItems = [];
+        private readonly List<IndexItem> _filteredDbIndexItems = [];
 
         private const string SavedStoriesKey = "saved_stories";
         private const string DefaultGoogleNewsFeedUrl = "https://news.google.com/rss?hl=en-NG&gl=NG&ceid=NG:en";
+
+        // GitHub DB settings (persisted locally)
+        private const string DbSettingsPref = "github_db_settings";
+        private const string DbOwnerKey = "owner";
+        private const string DbRepoKey = "repo";
+        private const string DbBranchKey = "branch";
+        private const string DbTokenKey = "token";
+        private const string DbSpaBaseUrlKey = "spa_base_url";
+
+        private const string DefaultDbOwner = "FoggyGoofball";
+        private const string DefaultDbRepo = "wetin-happen-db";
+        private const string DefaultDbBranch = "main";
+        private const string DefaultSpaBaseUrl = "https://foggygoofball.github.io/wetin-happen-spa";
 
         protected override void OnCreate(Bundle? savedInstanceState)
         {
@@ -51,6 +70,7 @@ namespace wetin_happen_dem_internets
             SetContentView(Resource.Layout.activity_main);
 
             _urlInput = FindViewById<EditText>(Resource.Id.urlInput);
+            _tagsInput = FindViewById<EditText>(Resource.Id.tagsInput);
             _fetchButton  = FindViewById<Button>(Resource.Id.fetchButton);
             _saveButton   = FindViewById<Button>(Resource.Id.saveButton);
             _shareButton  = FindViewById<Button>(Resource.Id.shareButton);
@@ -68,11 +88,15 @@ namespace wetin_happen_dem_internets
             _feedUrlInput = FindViewById<EditText>(Resource.Id.feedUrlInput);
             _refreshFeedButton = FindViewById<Button>(Resource.Id.refreshFeedButton);
             _articlesListView = FindViewById<ListView>(Resource.Id.articlesListView);
+            _dbSearchInput = FindViewById<EditText>(Resource.Id.dbSearchInput);
+            _loadDbButton = FindViewById<Button>(Resource.Id.loadDbButton);
+            _dbArticlesListView = FindViewById<ListView>(Resource.Id.dbArticlesListView);
 
             _fetchButton!.Click += async (_, _) => await FetchAndTranslateAsync();
             _saveButton!.Click  += (_, _) => SaveCurrentStory();
             _shareButton!.Click += (_, _) => ShareCurrentStory();
-            _uploadDocsButton!.Click += async (_, _) => await UploadToGoogleDocsAsync();
+            _uploadDocsButton!.Click += async (_, _) => await SaveToGithubDbAsync();
+            _uploadDocsButton!.LongClick += (_, _) => ShowDbSettingsDialog();
             _sideBySideSwitch!.CheckedChange += (_, _) => RenderStory();
             _loadSavedButton!.Click += (_, _) => LoadSelectedStory();
             _refreshFeedButton!.Click += async (_, _) => await RefreshFeedArticlesAsync();
@@ -88,11 +112,24 @@ namespace wetin_happen_dem_internets
                 await FetchAndTranslateAsync();
             };
 
+            _dbSearchInput!.TextChanged += (_, _) => FilterDbArticles();
+            _loadDbButton!.Click += async (_, _) => await LoadDbIndexAsync();
+            _dbArticlesListView!.ItemClick += (_, args) =>
+            {
+                if (args.Position < 0 || args.Position >= _filteredDbIndexItems.Count)
+                {
+                    return;
+                }
+
+                _ = LoadDbArticleAsync(_filteredDbIndexItems[args.Position]);
+            };
+
             _feedUrlInput!.Text = DefaultGoogleNewsFeedUrl;
 
             LoadSavedStoriesFromStorage();
             BindSavedStories();
             BindFeedArticles();
+            BindDbArticles();
             SetIdleState(GetString(Resource.String.status_ready));
 
             _ = RefreshFeedArticlesAsync();
@@ -192,12 +229,15 @@ namespace wetin_happen_dem_internets
                     return output;
                 });
 
+                var tags = ParseTags(_tagsInput?.Text);
+
                 _currentStory = new StoryRecord
                 {
                     Title = webArticle.Title,
                     SourceUrl = inputUrl.ToString(),
                     SourceDomain = inputUrl.Host,
                     HeroImageUrl = webArticle.ImageUrl ?? string.Empty,
+                    Tags = tags,
                     Paragraphs = translationResult,
                     SavedAtUtc = DateTimeOffset.UtcNow
                 };
@@ -320,7 +360,8 @@ namespace wetin_happen_dem_internets
             }
 
             _titleView!.Text = _currentStory.Title;
-            _citationView!.Text = string.Format(GetString(Resource.String.citation_template), _currentStory.SourceDomain, _currentStory.SourceUrl);
+            var tagText = _currentStory.Tags.Count > 0 ? $" • tags: {string.Join(", ", _currentStory.Tags)}" : string.Empty;
+            _citationView!.Text = string.Format(GetString(Resource.String.citation_template), _currentStory.SourceDomain, _currentStory.SourceUrl) + tagText;
 
             _heroImageView!.Visibility = ViewStates.Gone;
             if (!string.IsNullOrWhiteSpace(_currentStory.HeroImageUrl))
@@ -413,6 +454,8 @@ namespace wetin_happen_dem_internets
                 return;
             }
 
+            _currentStory = _currentStory with { Tags = ParseTags(_tagsInput?.Text) };
+
             var existing = _savedStories.FindIndex(s => string.Equals(s.SourceUrl, _currentStory.SourceUrl, StringComparison.OrdinalIgnoreCase));
             if (existing >= 0)
             {
@@ -445,6 +488,7 @@ namespace wetin_happen_dem_internets
 
             _currentStory = _savedStories[index];
             _urlInput!.Text = _currentStory.SourceUrl;
+            _tagsInput!.Text = string.Join(", ", _currentStory.Tags);
             RenderStory();
             SetIdleState(GetString(Resource.String.status_loaded_saved));
         }
@@ -568,6 +612,135 @@ namespace wetin_happen_dem_internets
             _loadSavedButton!.Enabled = _savedStories.Count > 0;
         }
 
+        private static List<string> ParseTags(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return [];
+            }
+
+            return text.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(t => t.Trim().ToLowerInvariant())
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .Distinct()
+                .Take(12)
+                .ToList();
+        }
+
+        private async Task LoadDbIndexAsync()
+        {
+            var settings = GetDbSettings();
+            if (string.IsNullOrWhiteSpace(settings.Token))
+            {
+                Toast.MakeText(this, Resource.String.github_db_not_configured, ToastLength.Long)?.Show();
+                return;
+            }
+
+            try
+            {
+                SetBusyState(GetString(Resource.String.github_db_saving));
+                var (items, _) = await LoadIndexAsync(settings);
+                _dbIndexItems.Clear();
+                _dbIndexItems.AddRange(items);
+                BindDbArticles();
+                SetIdleState(GetString(Resource.String.status_ready));
+            }
+            catch
+            {
+                SetIdleState(GetString(Resource.String.github_db_save_failed));
+            }
+        }
+
+        private void FilterDbArticles() => BindDbArticles();
+
+        private void BindDbArticles()
+        {
+            if (_dbArticlesListView is null)
+            {
+                return;
+            }
+
+            var q = (_dbSearchInput?.Text ?? string.Empty).Trim().ToLowerInvariant();
+            var filtered = _dbIndexItems
+                .Where(i => string.IsNullOrWhiteSpace(q)
+                    || i.Title.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || (i.Tags ?? []).Any(t => t.Contains(q, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            _filteredDbIndexItems.Clear();
+            _filteredDbIndexItems.AddRange(filtered);
+
+            var items = filtered.Count == 0
+                ? [GetString(Resource.String.db_empty)]
+                : filtered.Select(i => $"{i.Title}\n{i.SourceDomain} • {string.Join(", ", i.Tags ?? [])}").ToList();
+
+            var adapter = new ArrayAdapter<string>(this, Android.Resource.Layout.SimpleListItem1, items);
+            _dbArticlesListView.Adapter = adapter;
+        }
+
+        private async Task LoadDbArticleAsync(IndexItem item)
+        {
+            try
+            {
+                var rawBase = $"https://raw.githubusercontent.com/{GetDbSettings().Owner}/{GetDbSettings().Repo}/{GetDbSettings().Branch}";
+                var json = await new HttpClient().GetStringAsync($"{rawBase}/{item.Path}?{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}");
+
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                var title = root.GetProperty("title").GetString() ?? item.Title;
+                var sourceUrl = root.GetProperty("sourceUrl").GetString() ?? item.SourceUrl;
+                var sourceDomain = root.GetProperty("sourceDomain").GetString() ?? item.SourceDomain;
+                var heroImageUrl = root.TryGetProperty("heroImageUrl", out var heroEl) ? heroEl.GetString() ?? string.Empty : string.Empty;
+
+                var tags = root.TryGetProperty("tags", out var tagsEl) && tagsEl.ValueKind == JsonValueKind.Array
+                    ? tagsEl.EnumerateArray().Select(e => e.GetString() ?? string.Empty).Where(s => !string.IsNullOrWhiteSpace(s)).ToList()
+                    : (item.Tags ?? []);
+
+                var paragraphs = new List<ParagraphPair>();
+                if (root.TryGetProperty("paragraphs", out var pEl) && pEl.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var p in pEl.EnumerateArray())
+                    {
+                        var en = p.TryGetProperty("english", out var enEl) ? enEl.GetString() ?? string.Empty : string.Empty;
+                        var pcm = p.TryGetProperty("pidgin", out var pcmEl) ? pcmEl.GetString() ?? string.Empty : string.Empty;
+                        if (!string.IsNullOrWhiteSpace(pcm))
+                        {
+                            paragraphs.Add(new ParagraphPair(en, pcm));
+                        }
+                    }
+                }
+
+                _currentStory = new StoryRecord
+                {
+                    Title = title,
+                    SourceUrl = sourceUrl,
+                    SourceDomain = sourceDomain,
+                    HeroImageUrl = heroImageUrl,
+                    Tags = tags,
+                    Paragraphs = paragraphs,
+                    SavedAtUtc = item.SavedAtUtc
+                };
+
+                _urlInput!.Text = sourceUrl;
+                _tagsInput!.Text = string.Join(", ", tags);
+                RenderStory();
+                SetIdleState(GetString(Resource.String.status_done));
+            }
+            catch
+            {
+                SetIdleState(GetString(Resource.String.error_fetch_failed));
+            }
+        }
+
+        private static HttpClient BuildGitHubClient(string token)
+        {
+            var client = new HttpClient();
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("wetin-happen-dem-internets-app");
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+            return client;
+        }
+
         private void SetBusyState(string status)
         {
             _progressBar!.Visibility = ViewStates.Visible;
@@ -647,7 +820,7 @@ namespace wetin_happen_dem_internets
             return false;
         }
 
-        private async Task UploadToGoogleDocsAsync()
+        private async Task SaveToGithubDbAsync()
         {
             if (_currentStory is null)
             {
@@ -655,27 +828,244 @@ namespace wetin_happen_dem_internets
                 return;
             }
 
-            var sb = new StringBuilder();
-            sb.AppendLine(_currentStory.Title);
-            sb.AppendLine(new string('─', Math.Min(_currentStory.Title.Length, 60)));
-            sb.AppendLine($"Source: {_currentStory.SourceUrl}");
-            sb.AppendLine("Translated by: Wetin Happen Dem Internets");
-            sb.AppendLine();
-
-            foreach (var p in _currentStory.Paragraphs)
+            var settings = GetDbSettings();
+            if (string.IsNullOrWhiteSpace(settings.Token))
             {
-                sb.AppendLine(p.Pidgin);
-                sb.AppendLine();
+                Toast.MakeText(this, Resource.String.github_db_not_configured, ToastLength.Long)?.Show();
+                ShowDbSettingsDialog();
+                return;
             }
 
-            var intent = new Intent(Intent.ActionSend);
-            intent.SetType("text/plain");
-            intent.PutExtra(Intent.ExtraTitle, _currentStory.Title);
-            intent.PutExtra(Intent.ExtraText, sb.ToString().TrimEnd());
+            SetBusyState(GetString(Resource.String.github_db_saving));
+            _uploadDocsButton!.Enabled = false;
 
-            StartActivity(Intent.CreateChooser(intent, GetString(Resource.String.upload_docs_chooser)));
+            try
+            {
+                var now = DateTimeOffset.UtcNow;
+                var tags = ParseTags(_tagsInput?.Text);
 
-            await Task.CompletedTask;
+                var (indexItems, indexSha) = await LoadIndexAsync(settings);
+                var existing = indexItems.FirstOrDefault(i =>
+                    string.Equals(i.SourceUrl, _currentStory.SourceUrl, StringComparison.OrdinalIgnoreCase));
+
+                var articleId = existing?.Id ?? $"{now:yyyyMMdd-HHmmss}-{Slugify(_currentStory.Title)}";
+                var articlePath = existing?.Path ?? $"data/articles/{articleId}.json";
+                var isUpdate = existing is not null;
+
+                var articleSha = isUpdate ? (await GetRepoFileAsync(settings, articlePath)).Sha : null;
+
+                var articleRecord = new
+                {
+                    id = articleId,
+                    title = _currentStory.Title,
+                    sourceUrl = _currentStory.SourceUrl,
+                    sourceDomain = _currentStory.SourceDomain,
+                    heroImageUrl = _currentStory.HeroImageUrl,
+                    tags,
+                    savedAtUtc = _currentStory.SavedAtUtc,
+                    paragraphs = _currentStory.Paragraphs.Select(p => new { english = p.English, pidgin = p.Pidgin }).ToList()
+                };
+
+                var articleJson = JsonSerializer.Serialize(articleRecord, new JsonSerializerOptions { WriteIndented = true });
+                await PutRepoFileAsync(settings, articlePath, articleJson, $"{(isUpdate ? "Update" : "Add")} article: {_currentStory.Title}", sha: articleSha);
+
+                indexItems.RemoveAll(i => i.Id == articleId || string.Equals(i.SourceUrl, _currentStory.SourceUrl, StringComparison.OrdinalIgnoreCase));
+                indexItems.Insert(0, new IndexItem
+                {
+                    Id = articleId,
+                    Title = _currentStory.Title,
+                    SourceUrl = _currentStory.SourceUrl,
+                    SourceDomain = _currentStory.SourceDomain,
+                    HeroImageUrl = _currentStory.HeroImageUrl,
+                    Tags = tags,
+                    Path = articlePath,
+                    SavedAtUtc = now
+                });
+
+                var indexJson = JsonSerializer.Serialize(
+                    indexItems,
+                    new JsonSerializerOptions
+                    {
+                        WriteIndented = true,
+                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                    });
+                await PutRepoFileAsync(settings, "data/index.json", indexJson, $"Update index: {articleId}", indexSha);
+
+                var spaLink = $"{settings.SpaBaseUrl.TrimEnd('/')}/?id={Uri.EscapeDataString(articleId)}";
+                var clipboard = GetSystemService(ClipboardService) as ClipboardManager;
+                if (clipboard is not null)
+                {
+                    clipboard.PrimaryClip = ClipData.NewPlainText("article_spa_link", spaLink);
+                }
+
+                SetIdleState(isUpdate ? GetString(Resource.String.github_db_updated) : GetString(Resource.String.github_db_saved));
+                UpdateDiagnostic(spaLink, false);
+                Toast.MakeText(this, isUpdate ? Resource.String.github_db_updated : Resource.String.github_db_saved, ToastLength.Long)?.Show();
+            }
+            catch (Exception ex)
+            {
+                SetIdleState(GetString(Resource.String.github_db_save_failed));
+                UpdateDiagnostic($"GitHub save failed: {ex.Message}", true);
+                Toast.MakeText(this, Resource.String.github_db_save_failed, ToastLength.Long)?.Show();
+            }
+            finally
+            {
+                _uploadDocsButton!.Enabled = true;
+            }
+        }
+
+        private DbSettings GetDbSettings()
+        {
+            var prefs = GetSharedPreferences(DbSettingsPref, FileCreationMode.Private);
+            return new DbSettings(
+                Owner: prefs?.GetString(DbOwnerKey, DefaultDbOwner) ?? DefaultDbOwner,
+                Repo: prefs?.GetString(DbRepoKey, DefaultDbRepo) ?? DefaultDbRepo,
+                Branch: prefs?.GetString(DbBranchKey, DefaultDbBranch) ?? DefaultDbBranch,
+                Token: prefs?.GetString(DbTokenKey, string.Empty) ?? string.Empty,
+                SpaBaseUrl: prefs?.GetString(DbSpaBaseUrlKey, DefaultSpaBaseUrl) ?? DefaultSpaBaseUrl);
+        }
+
+        private void SaveDbSettings(DbSettings settings)
+        {
+            var prefs = GetSharedPreferences(DbSettingsPref, FileCreationMode.Private);
+            var editor = prefs?.Edit();
+            editor?.PutString(DbOwnerKey, settings.Owner.Trim());
+            editor?.PutString(DbRepoKey, settings.Repo.Trim());
+            editor?.PutString(DbBranchKey, settings.Branch.Trim());
+            editor?.PutString(DbTokenKey, settings.Token.Trim());
+            editor?.PutString(DbSpaBaseUrlKey, settings.SpaBaseUrl.Trim());
+            editor?.Apply();
+        }
+
+        private void ShowDbSettingsDialog()
+        {
+            var settings = GetDbSettings();
+
+            var root = new LinearLayout(this)
+            {
+                Orientation = Orientation.Vertical
+            };
+            root.SetPadding(32, 24, 32, 4);
+
+            EditText BuildField(string hint, string value, Android.Text.InputTypes type = Android.Text.InputTypes.ClassText)
+            {
+                var edit = new EditText(this)
+                {
+                    Hint = hint,
+                    Text = value
+                };
+                edit.InputType = type;
+                root.AddView(edit);
+                return edit;
+            }
+
+            var ownerInput = BuildField("GitHub owner", settings.Owner);
+            var repoInput = BuildField("GitHub repo", settings.Repo);
+            var branchInput = BuildField("Branch", settings.Branch);
+            var spaInput = BuildField("SPA base URL", settings.SpaBaseUrl, Android.Text.InputTypes.TextVariationUri);
+            var tokenInput = BuildField("GitHub token (repo:contents)", settings.Token, Android.Text.InputTypes.ClassText | Android.Text.InputTypes.TextVariationPassword);
+
+            var dialog = new AlertDialog.Builder(this)
+                .SetTitle(GetString(Resource.String.github_db_settings_title))
+                .SetView(root)
+                .SetNegativeButton(GetString(Android.Resource.String.Cancel), (_, _) => { })
+                .SetPositiveButton(GetString(Android.Resource.String.Ok), (_, _) =>
+                {
+                    SaveDbSettings(new DbSettings(
+                        ownerInput.Text ?? DefaultDbOwner,
+                        repoInput.Text ?? DefaultDbRepo,
+                        branchInput.Text ?? DefaultDbBranch,
+                        tokenInput.Text ?? string.Empty,
+                        spaInput.Text ?? DefaultSpaBaseUrl));
+
+                    Toast.MakeText(this, Resource.String.github_db_settings_saved, ToastLength.Short)?.Show();
+                })
+                .Create();
+
+            dialog.Show();
+        }
+
+        private async Task<(List<IndexItem> Items, string? Sha)> LoadIndexAsync(DbSettings settings)
+        {
+            try
+            {
+                var (content, sha) = await GetRepoFileAsync(settings, "data/index.json");
+                if (string.IsNullOrWhiteSpace(content))
+                {
+                    return ([], sha);
+                }
+
+                var list = JsonSerializer.Deserialize<List<IndexItem>>(
+                    content,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+                return (list, sha);
+            }
+            catch
+            {
+                return ([], null);
+            }
+        }
+
+        private async Task<(string Content, string? Sha)> GetRepoFileAsync(DbSettings settings, string path)
+        {
+            using var client = BuildGitHubClient(settings.Token);
+            var endpoint = $"https://api.github.com/repos/{settings.Owner}/{settings.Repo}/contents/{path}?ref={settings.Branch}";
+            var json = await client.GetStringAsync(endpoint);
+
+            using var doc = JsonDocument.Parse(json);
+            var contentB64 = doc.RootElement.GetProperty("content").GetString() ?? string.Empty;
+            contentB64 = contentB64.Replace("\n", string.Empty).Replace("\r", string.Empty);
+            var bytes = Convert.FromBase64String(contentB64);
+            var content = Encoding.UTF8.GetString(bytes);
+
+            var sha = doc.RootElement.TryGetProperty("sha", out var shaEl) ? shaEl.GetString() : null;
+            return (content, sha);
+        }
+
+        private async Task PutRepoFileAsync(DbSettings settings, string path, string content, string message, string? sha)
+        {
+            using var client = BuildGitHubClient(settings.Token);
+            var endpoint = $"https://api.github.com/repos/{settings.Owner}/{settings.Repo}/contents/{path}";
+            var b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(content));
+
+            var payload = new Dictionary<string, object?>
+            {
+                ["message"] = message,
+                ["content"] = b64,
+                ["branch"] = settings.Branch
+            };
+            if (!string.IsNullOrWhiteSpace(sha))
+            {
+                payload["sha"] = sha;
+            }
+
+            var body = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+            using var resp = await client.PutAsync(endpoint, body);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var details = await resp.Content.ReadAsStringAsync();
+                throw new InvalidOperationException($"{(int)resp.StatusCode}: {details}");
+            }
+        }
+
+        private static string Slugify(string text)
+        {
+            var slug = Regex.Replace(text.ToLowerInvariant(), "[^a-z0-9]+", "-").Trim('-');
+            return string.IsNullOrWhiteSpace(slug) ? "article" : slug[..Math.Min(slug.Length, 48)];
+        }
+
+        private sealed record DbSettings(string Owner, string Repo, string Branch, string Token, string SpaBaseUrl);
+
+        private sealed record IndexItem
+        {
+            public string Id { get; init; } = string.Empty;
+            public string Title { get; init; } = string.Empty;
+            public string SourceUrl { get; init; } = string.Empty;
+            public string SourceDomain { get; init; } = string.Empty;
+            public string HeroImageUrl { get; init; } = string.Empty;
+            public List<string> Tags { get; init; } = [];
+            public string Path { get; init; } = string.Empty;
+            public DateTimeOffset SavedAtUtc { get; init; }
         }
 
         public sealed record StoryRecord
@@ -684,6 +1074,7 @@ namespace wetin_happen_dem_internets
             public string SourceUrl { get; init; } = string.Empty;
             public string SourceDomain { get; init; } = string.Empty;
             public string HeroImageUrl { get; init; } = string.Empty;
+            public List<string> Tags { get; init; } = [];
             public List<ParagraphPair> Paragraphs { get; init; } = [];
             public DateTimeOffset SavedAtUtc { get; init; }
         }

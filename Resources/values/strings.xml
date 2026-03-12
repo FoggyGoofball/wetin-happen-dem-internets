@@ -10,21 +10,32 @@
     <string name="error_feed_fetch_failed">Could not refresh Google News feed.</string>
 
     <string name="url_hint">https://news-site.com/full-article-link</string>
+    <string name="tags_hint">tags (comma separated, e.g. ai, medicine, space)</string>
     <string name="fetch_button">Fetch + Translate</string>
     <string name="save_button">Save</string>
     <string name="share_button">Share</string>
     <string name="side_by_side_toggle">Side-by-side EN | PCM</string>
     <string name="saved_stories_label">Saved stories</string>
     <string name="load_button">Load</string>
+    <string name="db_browser_label">Browse DB articles</string>
+    <string name="db_search_hint">Search headline or tags</string>
+    <string name="db_load_button">Load DB</string>
+    <string name="db_empty">No DB articles found.</string>
     <string name="placeholder_title">No story loaded yet</string>
     <string name="placeholder_citation">Source citation go show here</string>
     <string name="citation_template">Source: %1$s • %2$s</string>
     <string name="share_chooser_title">Share translated story</string>
     <string name="saved_list_empty">No saved story yet</string>
 
-    <string name="upload_docs_button">Export</string>
-    <string name="upload_docs_chooser">Export story to…</string>
-    <string name="upload_docs_nothing">No translated story to export yet.</string>
+    <string name="upload_docs_button">Save to DB</string>
+    <string name="upload_docs_nothing">No translated story to save yet.</string>
+    <string name="github_db_saving">Saving to GitHub DB…</string>
+    <string name="github_db_saved">Saved to DB and link copied.</string>
+    <string name="github_db_updated">Article already existed. Updated and link copied.</string>
+    <string name="github_db_save_failed">Could not save to GitHub DB.</string>
+    <string name="github_db_not_configured">Set your DB token first (long-press Save to DB).</string>
+    <string name="github_db_settings_title">GitHub DB settings</string>
+    <string name="github_db_settings_saved">DB settings saved.</string>
 
     <string name="status_ready">Ready.</string>
     <string name="status_fetching">Fetching and translating…</string>

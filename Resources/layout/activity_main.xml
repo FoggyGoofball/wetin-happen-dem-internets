@@ -103,6 +103,16 @@
                 android:singleLine="true"
                 android:backgroundTint="#D1D5DB" />
 
+            <EditText
+                android:id="@+id/tagsInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:hint="@string/tags_hint"
+                android:inputType="text"
+                android:singleLine="true"
+                android:backgroundTint="#D1D5DB" />
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -230,6 +240,57 @@
                     android:backgroundTint="#2563EB"
                     android:textColor="#FFFFFF" />
             </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="vertical"
+            android:background="@drawable/bg_card"
+            android:padding="14dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/db_browser_label"
+                android:textColor="#111827"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingTop="6dp"
+                android:gravity="center_vertical">
+
+                <EditText
+                    android:id="@+id/dbSearchInput"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="@string/db_search_hint"
+                    android:inputType="text"
+                    android:singleLine="true"
+                    android:backgroundTint="#D1D5DB" />
+
+                <Space android:layout_width="8dp" android:layout_height="1dp" />
+
+                <Button
+                    android:id="@+id/loadDbButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/db_load_button"
+                    android:backgroundTint="#2563EB"
+                    android:textColor="#FFFFFF" />
+            </LinearLayout>
+
+            <ListView
+                android:id="@+id/dbArticlesListView"
+                android:layout_width="match_parent"
+                android:layout_height="200dp"
+                android:dividerHeight="8dp"
+                android:paddingTop="8dp" />
         </LinearLayout>
 
         <LinearLayout
